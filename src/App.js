@@ -1,25 +1,54 @@
-import logo from './logo.svg';
-import './App.css';
+// App.js
+import React, { useState, useEffect } from 'react';
+import { BrowserRouter as Router, Route, Routes, useLocation } from 'react-router-dom';
+import HomePage from './pages/HomePage';
+import MarketplacePage from './pages/MarketplacePage';
+import ProfilePage from './pages/ProfilePage';
+import BottomTabNavigator from './components/BottomTabNavigator';
+import { TonConnectUIProvider } from '@tonconnect/ui-react';
+import QuizPage from './pages/QuizPage';
+import SplashScreen from './components/SplashScreen'; // Import the splash screen
 
-function App() {
+const AppContent = () => {
+  const location = useLocation();
+
   return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
+    <div>
+      <Routes>
+        <Route path="/" element={<HomePage />} />
+        <Route path="/marketplace" element={<MarketplacePage />} />
+        <Route path="/profile" element={<ProfilePage />} />
+        <Route path="/quiz" element={<QuizPage />} />
+      </Routes>
+      {location.pathname !== '/quiz' && <BottomTabNavigator />}
     </div>
   );
-}
+};
+
+const App = () => {
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    // Simulate loading time (e.g., 2 seconds)
+    const timer = setTimeout(() => {
+      setIsLoading(false);
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  return (
+    <TonConnectUIProvider 
+      manifestUrl='https://blush-gentle-bass-964.mypinata.cloud/ipfs/QmQFcb6AvVJifEiVzJbqiJFkX3pTB22shYAmtD6prNcTwR'
+      actionsConfiguration={{
+        twaReturnUrl: 'https://t.me/quista_bot/Quista'
+      }}
+    >
+      <Router>
+        {isLoading ? <SplashScreen /> : <AppContent />}
+      </Router>
+    </TonConnectUIProvider>
+  );
+};
 
 export default App;
