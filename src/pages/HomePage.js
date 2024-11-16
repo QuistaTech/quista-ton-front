@@ -1,30 +1,62 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import Header from '../components/Header';
 import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
-import { useTonWallet } from '@tonconnect/ui-react';
-import { useNavigate } from 'react-router-dom'; // Import useNavigate from React Router
+import { useTonAddress, useTonWallet } from '@tonconnect/ui-react';
+import { useNavigate } from 'react-router-dom';
+import { registerUser } from '../services/userService'; // Import the registerUser function
 
 const HomePage = () => {
   const wallet = useTonWallet();
-  const navigate = useNavigate(); // Initialize useNavigate hook
+  const walletAddress = useTonAddress();
+  const navigate = useNavigate();
+  const [userInfo, setUserInfo] = useState({ daily_right: '-', eraser: '-' });
+  const [loading, setLoading] = useState(true); // Loading state
+
+  useEffect(() => {
+    const fetchUserInfo = async () => {
+      if (wallet) {
+        try {
+          setLoading(true); // Start loading
+          const response = await registerUser(walletAddress);
+          if (response.success) {
+            setUserInfo({
+              daily_right: response.user.daily_right,
+              eraser: response.user.eraser,
+            });
+          } else {
+            console.error(response.message);
+          }
+        } catch (error) {
+          console.error('Error fetching user info:', error);
+        } finally {
+          setLoading(false); // End loading
+        }
+      }
+    };
+
+    fetchUserInfo();
+  }, [wallet]);
 
   const handleStartJourney = () => {
     if (!wallet) {
       toast.error("You have to connect a wallet to start the daily journey", {
         style: {
-          backgroundColor: '#1b1b1b', // Black background
-          color: 'white', // White text
+          backgroundColor: '#1b1b1b',
+          color: 'white',
         },
         progressStyle: {
-          background: '#0090EA', // Purple progress bar
+          background: '#0090EA',
         },
       });
     } else {
-      // Navigate to the quiz page if the wallet exists
       navigate('/quiz');
     }
   };
+
+  const LoadingIndicator = () => (
+    <div style={styles.loadingIndicator}></div>
+  );
 
   return (
     <div style={styles.homeContainer}>
@@ -39,14 +71,14 @@ const HomePage = () => {
       <div style={styles.centerButtonContainerWithSides}>
         <div style={styles.sideSection}>
           <button style={styles.sideButton}>
-            <img src="assets/right.svg" alt="Icon 1" style={styles.icon} />
-            <span style={styles.sideNumber}>{wallet ? "13/13" : "-"}</span>
+            <img src="assets/right.svg" alt="Daily Right Icon" style={styles.icon} />
+            {loading ? <LoadingIndicator /> : <span style={styles.sideNumber}>{userInfo.daily_right}/13</span>}
           </button>
         </div>
         <div style={styles.sideSection}>
           <button style={styles.sideButton}>
-            <img src="assets/eraser.svg" alt="Icon 2" style={styles.icon} />
-            <span style={styles.sideNumber}>{wallet ? "3/3" : "-"}</span>
+            <img src="assets/eraser.svg" alt="Eraser Icon" style={styles.icon} />
+            {loading ? <LoadingIndicator /> : <span style={styles.sideNumber}>{userInfo.eraser}/3</span>}
           </button>
         </div>
       </div>
@@ -142,6 +174,18 @@ const styles = {
     boxShadow: '0 4px 8px rgba(0, 0, 0, 0.3)',
     cursor: 'pointer',
     transition: 'transform 0.3s ease, box-shadow 0.3s ease',
+  },
+  loadingIndicator: {
+    width: '20px',
+    height: '20px',
+    border: '3px solid white',
+    borderTop: '3px solid transparent',
+    borderRadius: '50%',
+    animation: 'spin 5s linear infinite',
+  },
+  '@keyframes spin': {
+    from: { transform: 'rotate(0deg)' },
+    to: { transform: 'rotate(360deg)' },
   },
 };
 

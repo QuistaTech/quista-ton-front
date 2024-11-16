@@ -1,16 +1,35 @@
-import { TonConnectButton, useTonConnectUI, useTonWallet } from '@tonconnect/ui-react';
-import React from 'react';
+import { TonConnectButton, useTonAddress, useTonConnectUI, useTonWallet } from '@tonconnect/ui-react';
+import React, { useEffect } from 'react';
+import { registerUser } from '../services/userService';
 
 const Header = () => {
-  const [tonConnectUI] = useTonConnectUI()
-  const wallet = useTonWallet()
+  const [tonConnectUI] = useTonConnectUI();
+  const wallet = useTonWallet();
+  const walletAddress = useTonAddress();
+
+  useEffect(() => {
+    const registerWallet = async () => {
+        if (walletAddress) { // Trigger only when walletAddress is set (not null)
+            // Store the wallet address in localStorage
+            localStorage.setItem('walletAddress', walletAddress);
+
+            // Register or retrieve user using the wallet address
+            const response = await registerUser(walletAddress);
+            if (response.success) {
+                console.log('User registered or retrieved successfully:', response.user);
+            } else {
+                console.error('Error during user registration:', response.message);
+            }
+        }
+    };
+
+    registerWallet();
+}, [walletAddress]); // Dependency array ensures this effect runs when walletAddress changes
+
+
   return (
     <div style={styles.headerContainer}>
       <img src="assets/main-logo.png" alt="Quista Logo" style={styles.logo} />
-      {/* <button style={styles.connectButton} onClick={() => {
-        tonConnectUI.openModal()
-      }
-      }>Connect Wallet</button> */}
       <TonConnectButton>Connect Wallet</TonConnectButton>
     </div>
   );
@@ -25,12 +44,12 @@ const styles = {
     borderBottomLeftRadius: '12px', // Bottom-only radius
     borderBottomRightRadius: '12px', // Bottom-only radius
     background: 'transparent', // No background color
-    width : "85%",
+    width: '85%',
     boxShadow: `
       0 10px 10px -5px rgba(138, 43, 226, 0.6),  /* First shadow layer (purple) */
       0 15px 15px -5px rgba(199, 21, 133, 0.5) /* Second shadow layer (magenta) */
     `,
-    zIndex : "99999"
+    zIndex: '99999',
   },
   logo: {
     width: '25%', // Adjust logo size as needed
@@ -55,4 +74,3 @@ const styles = {
 };
 
 export default Header;
-

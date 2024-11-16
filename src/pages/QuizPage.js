@@ -1,76 +1,115 @@
 import React, { useState, useEffect } from 'react';
 import Header from '../components/Header';
 import { useNavigate } from 'react-router-dom';
-
-const questions = [
-    // Easy
-    { question: "What is 2 + 2?", options: ["3", "4", "5", "6"], answer: "4", level: "easy", time: 30 },
-    { question: "What is 5 - 3?", options: ["2", "3", "4", "1"], answer: "2", level: "easy", time: 30 },
-    { question: "What is 7 + 3?", options: ["9", "10", "11", "12"], answer: "10", level: "easy", time: 30 },
-    { question: "What is 6 / 2?", options: ["3", "4", "5", "6"], answer: "3", level: "easy", time: 30 },
-    { question: "What is 8 * 1?", options: ["8", "9", "10", "11"], answer: "8", level: "easy", time: 30 },
-    // Medium
-    { question: "What is 12 - 5?", options: ["6", "7", "8", "5"], answer: "7", level: "medium", time: 60 },
-    { question: "What is 15 + 7?", options: ["21", "22", "23", "24"], answer: "22", level: "medium", time: 60 },
-    { question: "What is 9 * 3?", options: ["27", "28", "29", "30"], answer: "27", level: "medium", time: 60 },
-    // Hard
-    { question: "What is 144 / 12?", options: ["12", "11", "10", "9"], answer: "12", level: "hard", time: 90 },
-    { question: "What is 25 * 4?", options: ["100", "105", "110", "120"], answer: "100", level: "hard", time: 90 },
-    // Very Hard
-    { question: "What is the square root of 289?", options: ["17", "18", "19", "20"], answer: "17", level: "very hard", time: 120 },
-    { question: "What is 5 to the power of 3?", options: ["125", "130", "135", "140"], answer: "125", level: "very hard", time: 120 },
-    // Legendary
-    { question: "What is the factorial of 5?", options: ["120", "130", "140", "150"], answer: "120", level: "legendary", time: 180 }
-];
+import { feedQuestion, answerQuestion } from '../services/questionService';
 
 const QuizPage = () => {
-    const [currentQuestion, setCurrentQuestion] = useState(0);
-    const [timeLeft, setTimeLeft] = useState(questions[0].time);
-    const [score, setScore] = useState(0);
-    const [feedback, setFeedback] = useState({ visible: false, message: "", coins: 0 });
-    const navigate = useNavigate()
+    const [currentQuestion, setCurrentQuestion] = useState(null);
+    const [timeLeft, setTimeLeft] = useState(0);
+    const [feedback, setFeedback] = useState({ visible: false, isCorrect: false, tokens: 0 });
+    const [loading, setLoading] = useState(true); // State for loading
+    const [error, setError] = useState(null);
+    const [journeyFinished, setJourneyFinished] = useState(false); // State for journey completion
+    const navigate = useNavigate();
+
+    // Get wallet address from local storage
+    const walletAddress = localStorage.getItem('walletAddress');
+
+    // Fetch the first question when the component mounts and walletAddress is available
+    useEffect(() => {
+        if (walletAddress) {
+            fetchQuestion();
+        } else {
+            setError('Wallet address not found. Please connect your wallet.');
+        }
+    }, []);
+
+    const fetchQuestion = async () => {
+        if (!walletAddress) {
+            setError('Wallet address not available.');
+            return;
+        }
+        setLoading(true); // Show loading indicator
+
+        try {
+            const response = await feedQuestion(walletAddress);
+            if (response.success) {
+                const difficultyLevel = mapDifficultyToLevel(response.question.difficulty);
+                setCurrentQuestion({ ...response.question, level: difficultyLevel });
+                setTimeLeft(getTimeForDifficulty(difficultyLevel));
+                setError(null);
+            } else {
+                setError(response.message || 'An unexpected error occurred.');
+            }
+        } catch (err) {
+            setError('An unexpected error occurred.');
+        } finally {
+            setLoading(false); // Hide loading indicator after fetching
+        }
+    };
 
     useEffect(() => {
-        if (feedback.visible) return; // Stop the timer if feedback is visible
+        if (feedback.visible || !currentQuestion) return;
 
         const timer = setInterval(() => {
             setTimeLeft((prev) => (prev > 0 ? prev - 1 : 0));
-        }, 1000); // 1-second intervals
+        }, 1000);
 
-        if (timeLeft === 0 && !feedback.visible) {
-            handleFeedback(false, "Time's up!");
+        if (timeLeft === 0 && !feedback.visible && currentQuestion) {
+            setFeedback({ visible: true, isCorrect: false, tokens: 0 });
         }
 
         return () => clearInterval(timer);
-    }, [timeLeft, feedback.visible]);
+    }, [timeLeft, feedback.visible, currentQuestion]);
 
     const handleNextQuestion = () => {
-        const nextQuestion = currentQuestion + 1;
-        if (nextQuestion < questions.length) {
-            setCurrentQuestion(nextQuestion);
-            setTimeLeft(questions[nextQuestion].time);
-            setFeedback({ visible: false, message: "", coins: 0 });
-        } else {
-            alert(`Quiz Complete! Your score: ${score}/${questions.length}`);
+        setFeedback({ visible: false, isCorrect: false, tokens: 0 });
+        setCurrentQuestion(null); // Clear current question before fetching the next
+        fetchQuestion(); // Fetch a new question
+    };
+
+    const handleFinishJourney = () => {
+        setJourneyFinished(true); // Set journey finished state
+    };
+
+    const handleOptionClick = async (option) => {
+        if (!currentQuestion) return;
+
+        try {
+            const response = await answerQuestion(walletAddress, currentQuestion.question_id, option);
+            setFeedback({
+                visible: true,
+                isCorrect: response.success && response.isCorrectAnswer,
+                tokens: response.tokensAdded || 0,
+            });
+        } catch (err) {
+            setFeedback({ visible: true, isCorrect: false, tokens: 0 });
         }
     };
 
-    const handleOptionClick = (option) => {
-        if (option === questions[currentQuestion].answer) {
-            const earnedCoins = 10; // Example coin reward
-            setScore(score + 1);
-            handleFeedback(true, "Correct! You've earned coins.", earnedCoins);
-        } else {
-            handleFeedback(false, "Incorrect!");
+    const mapDifficultyToLevel = (difficulty) => {
+        switch (difficulty) {
+            case 1: return "easy";
+            case 2: return "medium";
+            case 3: return "hard";
+            case 4: return "very hard";
+            case 5: return "legendary";
+            default: return "unknown";
         }
     };
 
-    const handleFeedback = (isCorrect, message, coins = 0) => {
-        setFeedback({ visible: true, message, coins });
+    const getTimeForDifficulty = (level) => {
+        switch (level) {
+            case "easy": return 30;
+            case "medium": return 45;
+            case "hard": return 60;
+            case "very hard": return 90;
+            case "legendary": return 120;
+            default: return 30;
+        }
     };
 
-    const current = questions[currentQuestion];
-    const gradient = getGradientForLevel(current.level);
+    const gradient = currentQuestion ? getGradientForLevel(currentQuestion.level) : "linear-gradient(135deg, #F9E79F, #F7DC6F)";
 
     function getGradientForLevel(level) {
         switch (level) {
@@ -92,44 +131,76 @@ const QuizPage = () => {
     return (
         <div style={styles.quizContainer}>
             <Header />
-            <div style={styles.quizContent}>
-                <h2 style={{ ...styles.quizTitle, background: gradient }}>{current.level.toUpperCase()}</h2>
-                <div style={{ ...styles.questionContainer, filter: feedback.visible ? 'blur(3px)' : 'none' }}>
-                    <p style={styles.questionText}>{current.question}</p>
+            {error ? (
+                <div style={styles.journeyContainer}>
+                    <p style={styles.errorMessage}>{error}</p>
+                    <button style={styles.homeButton} onClick={() => navigate('/')}>Home</button>
                 </div>
-                <div style={styles.optionsContainer}>
-                    {current.options.map((option, index) => (
-                        <button key={index} style={styles.optionButton} onClick={() => handleOptionClick(option)} disabled={feedback.visible}>
-                            {option}
-                        </button>
-                    ))}
+            ) : loading ? (
+                <div style={styles.loadingContainer}>
+                    <p style={styles.loadingText}>New question coming...</p>
+                    <div style={styles.spinner}></div>
                 </div>
-                <div style={styles.timeBarContainer}>
-                    <div style={{ ...styles.timeBar, width: `${(timeLeft / current.time) * 100}%` }}></div>
-                </div>
-            </div>
-            <div style={styles.mascotContainer}>
-            <img
-          src="assets/mascot.png" // Replace with your actual image source
-          alt="Main Character"
-          style={styles.mascotImage}
-        />
-            </div>
-            {feedback.visible && (
-                <div style={styles.feedbackOverlay}>
-                    <div style={styles.feedbackContainer}>
-                        <p style={styles.feedbackText}>{feedback.message}</p>
-                        {feedback.coins > 0 && (
-                            <div style={styles.coinDisplay}>+{feedback.coins} $QST</div>
-                        )}
-                        <div style={styles.feedbackButtonContainer}>
-                            <button style={styles.breakButton} onClick={() => navigate("/")}>Take a Break</button>
-                            <button style={styles.nextButton} onClick={handleNextQuestion}>Next Question</button>
-
-                        </div>
+            ) : currentQuestion ? (
+                journeyFinished ? (
+                    <div style={styles.journeyContainer}>
+                        <p style={styles.journeyText}>Congratulations! You've finished the journey.</p>
+                        <button style={styles.nextButton} onClick={() => navigate("/")}>Go Home</button>
                     </div>
-                </div>
+                ) : (
+                    <div style={styles.quizContent}>
+                        <h2 style={{ ...styles.quizTitle, background: gradient }}>{currentQuestion.level.toUpperCase()}</h2>
+                        <div style={{ ...styles.questionContainer, filter: feedback.visible ? 'blur(3px)' : 'none' }}>
+                            <p style={styles.questionText}>{currentQuestion.question_text}</p>
+                        </div>
+                        <div style={styles.optionsContainer}>
+                            {currentQuestion.options.map((option, index) => (
+                                <button key={index} style={styles.optionButton} onClick={() => handleOptionClick(option)} disabled={feedback.visible}>
+                                    {option}
+                                </button>
+                            ))}
+                        </div>
+                        <div style={styles.timeBarContainer}>
+                            <div style={{ ...styles.timeBar, width: `${(timeLeft / getTimeForDifficulty(currentQuestion.level)) * 100}%` }}></div>
+                        </div>
+                        {feedback.visible && (
+                            <div style={styles.feedbackOverlay}>
+                                <div style={styles.feedbackContainer}>
+                                    <div style={styles.feedbackCombinedContainer}>
+                                        <div style={styles.feedbackTextWithIcon}>
+                                            <span style={styles.feedbackText}>
+                                                {feedback.isCorrect ? "Correct" : "Incorrect"}
+                                            </span>
+                                        </div>
+                                        {feedback.tokens > 0 && (
+                                            <span style={styles.tokenDisplay}>+{feedback.tokens} $QST</span>
+                                        )}
+                                    </div>
+                                    <div style={styles.feedbackButtonContainer}>
+                                        {currentQuestion.level === "legendary" ? (
+                                            <button style={styles.finishButton} onClick={handleFinishJourney}>Finish the Journey</button>
+                                        ) : (
+                                            <>
+                                                <button style={styles.breakButton} onClick={() => navigate("/")}>Take a Break</button>
+                                                <button style={styles.nextButton} onClick={handleNextQuestion}>Next Question</button>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )
+            ) : (
+                <p style={styles.loadingMessage}>Loading question...</p>
             )}
+            <div style={styles.mascotContainer}>
+                <img
+                    src="assets/mascot.png"
+                    alt="Main Character"
+                    style={styles.mascotImage}
+                />
+            </div>
         </div>
     );
 };
@@ -143,6 +214,27 @@ const styles = {
         backgroundColor: '#000',
         height: '96vh',
         overflow: 'hidden',
+    },
+    errorContainer: {
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginTop: '20%',
+        color: 'white',
+    },
+    errorMessage: {
+        fontSize: '20px',
+        marginBottom: '20px',
+    },
+    homeButton: {
+        padding: '10px 20px',
+        fontSize: '16px',
+        color: 'white',
+        background: 'linear-gradient(135deg, #8a2be2, #c71585)',
+        border: 'none',
+        borderRadius: '12px',
+        cursor: 'pointer',
     },
     quizContent: {
         width: '90%',
@@ -163,8 +255,8 @@ const styles = {
         padding: '10px',
         borderRadius: '8px',
         textAlign: 'center',
-        width: '50%', // Title width is set to half of the container's width
-        alignSelf: 'center', // Centering the title
+        width: '50%',
+        alignSelf: 'center',
     },
     questionContainer: {
         width: '100%',
@@ -180,21 +272,21 @@ const styles = {
     },
     optionsContainer: {
         display: 'grid',
-        gridTemplateColumns: '1fr 1fr', // Two columns layout
-        gap: '10px', // Space between the buttons
+        gridTemplateColumns: '1fr 1fr',
+        gap: '10px',
         width: '100%',
-        marginBottom: '20px', // Space between options and timer
+        marginBottom: '20px',
     },
     optionButton: {
         padding: '12px 16px',
         fontSize: '16px',
         color: '#fff',
-        background: 'linear-gradient(135deg, #2c2c2c, #4d4d4d)', // Black and gray gradient
+        background: 'linear-gradient(135deg, #2c2c2c, #4d4d4d)',
         border: 'none',
         borderRadius: '8px',
         cursor: 'pointer',
         transition: 'transform 0.3s ease, box-shadow 0.3s ease',
-        boxShadow: '0 4px 8px rgba(0, 0, 0, 0.3)', // Shadow similar to the bottom tab
+        boxShadow: '0 4px 8px rgba(0, 0, 0, 0.3)',
     },
     timeBarContainer: {
         width: '100%',
@@ -205,8 +297,8 @@ const styles = {
     },
     timeBar: {
         height: '100%',
-        background: 'linear-gradient(135deg, #ff00ff, #8000ff)', // Gradient color for the time bar
-        transition: 'width 0.1s linear', // Smooth transition
+        background: 'linear-gradient(135deg, #ff00ff, #8000ff)',
+        transition: 'width 0.1s linear',
     },
     feedbackOverlay: {
         position: 'absolute',
@@ -217,7 +309,7 @@ const styles = {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: 'rgba(0, 0, 0, 0.6)', // Semi-transparent background
+        backgroundColor: 'rgba(0, 0, 0, 0.6)',
         zIndex: 10,
     },
     feedbackContainer: {
@@ -227,19 +319,38 @@ const styles = {
         textAlign: 'center',
         color: '#fff',
     },
-    feedbackText: {
-        fontSize: '20px',
-        marginBottom: '15px',
+    feedbackCombinedContainer: {
+        padding: '20px 40px',
+        background: 'linear-gradient(135deg, #2c2c2c, #4d4d4d)',
+        borderRadius: '12px',
+        boxShadow: '0 4px 8px rgba(0, 0, 0, 0.3)',
+        marginBottom: '20px',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
     },
-    coinDisplay: {
-        margin: '10px 0',
-        padding: '12px 16px',
+    feedbackTextWithIcon: {
+        display: 'flex',
+        alignItems: 'center',
+        marginBottom: '10px',
+    },
+    feedbackText: {
+        fontSize: '30px',
         color: '#fff',
-        background: 'linear-gradient(135deg, #2c2c2c, #4d4d4d)', // Matching the option style gradient
-        borderRadius: '8px',
-        textAlign: 'center',
+      
+    },
+    tokenDisplay: {
+        fontSize: '25px',
         fontWeight: 'bold',
-        boxShadow: '0 4px 8px rgba(0, 0, 0, 0.3)', // Matching the option style shadow
+        background: 'linear-gradient(135deg, #8a2be2, #0090EA)', // Blue to purple gradient
+        WebkitBackgroundClip: 'text',
+        WebkitTextFillColor: 'transparent',
+        marginTop: '10px', // Add margin if needed
+        textAlign: 'center',
+    },
+    feedbackIcon: {
+        width: '34px',
+        height: '34px',
     },
     feedbackButtonContainer: {
         display: 'flex',
@@ -250,35 +361,88 @@ const styles = {
         padding: '5px 24px',
         fontSize: '15px',
         color: 'white',
-        background: 'linear-gradient(135deg, #8a2be2, #c71585)', // Matching the start journey button gradient
+        background: 'linear-gradient(135deg, #8a2be2, #c71585)',
         border: 'none',
         borderRadius: '8px',
         boxShadow: '0 4px 8px rgba(0, 0, 0, 0.3)',
         cursor: 'pointer',
         margin: '5px',
-        width: '48%', // Ensures buttons are same size
+        width: '48%',
+    },
+    finishButton:{
+        padding: '5px 24px',
+        fontSize: '15px',
+        color: 'white',
+        background: 'linear-gradient(135deg, #8a2be2, #c71585)',
+        border: 'none',
+        borderRadius: '8px',
+        boxShadow: '0 4px 8px rgba(0, 0, 0, 0.3)',
+        cursor: 'pointer',
+        margin: '5px',
+        width: '100%',
     },
     breakButton: {
         padding: '5px 24px',
         fontSize: '15px',
         color: '#fff',
-        background: 'linear-gradient(135deg, #2c2c2c, #4d4d4d)', // Matching the option style gradient
+        background: 'linear-gradient(135deg, #2c2c2c, #4d4d4d)',
         border: 'none',
         borderRadius: '8px',
         cursor: 'pointer',
         margin: '5px',
-        width: '48%', // Ensures buttons are same size
+        width: '48%',
     },
     mascotImage: {
         maxWidth: '40%',
         height: 'auto',
         borderRadius: '12px',
-      },
-      mascotContainer: {
-        display :"flex",
-        justifyContent : "center",
-        alignItems : "center"
-      }
+    },
+    mascotContainer: {
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center"
+    },
+    loadingMessage: {
+        color: 'white',
+        marginTop: '20%',
+        fontSize: '18px',
+    },
+    loadingContainer: {
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: '60vh',
+        color: 'white',
+    },
+    loadingText: {
+        fontSize: '24px',
+        marginBottom: '20px',
+    },
+    spinner: {
+        width: '40px',
+        height: '40px',
+        border: '4px solid rgba(255, 255, 255, 0.3)',
+        borderTop: '4px solid white',
+        borderRadius: '50%',
+        animation: 'spin 1s linear infinite',
+    },
+    journeyContainer: {
+        padding: '20px',
+        backgroundColor: '#222',
+        borderRadius: '12px',
+        textAlign: 'center',
+        color: '#fff',
+        marginTop: '30%',
+        maxWidth: '100%',
+        background: 'linear-gradient(135deg, #2c2c2c, #4d4d4d)', // Same background style as Take a Break button
+        marginBottom : '20%',
+    },
+    journeyText: {
+        fontSize: '24px',
+        marginBottom: '20px',
+        color: "#fff"
+    },
 };
 
 export default QuizPage;

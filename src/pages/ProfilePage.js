@@ -1,16 +1,37 @@
 import { useTonAddress } from '@tonconnect/ui-react';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { registerUser } from '../services/userService';
 
 const ProfilePage = () => {
     const [isCopied, setIsCopied] = useState(false);
     const [selectedLanguage, setSelectedLanguage] = useState("English"); // Default language state
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const walletAddress = useTonAddress();
-    const userInfos = {
+    const [userInfos, setUserInfos] = useState({
         nickname: "Adventurer",
         walletAddress: walletAddress,
         balance: "0.00"
-    };
+    });
+
+    // Register or retrieve user when the component mounts
+    useEffect(() => {
+        const fetchUserInfo = async () => {
+            if (walletAddress) {
+                const userData = await registerUser(walletAddress);
+                if (userData.success) {
+                    setUserInfos({
+                        nickname: userData.user.nickname || "Adventurer",
+                        walletAddress: userData.user.wallet_address,
+                        balance: userData.user.balance || "0.00",
+                    });
+                } else {
+                    console.error('Error registering or retrieving user:', userData.message);
+                }
+            }
+        };
+
+        fetchUserInfo();
+    }, [walletAddress]);
 
     // Function to format wallet address
     const formatAddress = (address) => {
@@ -76,7 +97,7 @@ const ProfilePage = () => {
                             <div style={styles.row}>
                                 <img src="assets/balance.svg" alt="Balance Icon" style={styles.rowIcon} />
                                 <p style={styles.balanceText}>
-                                    Balance: <span style={styles.gradientText}>{userInfos.balance}</span>
+                                    Balance: <span style={styles.gradientText}>{userInfos.balance} $QST</span>
                                 </p>
                             </div>
                             <button style={styles.claimButton} onClick={handleClaim}>Claim</button>
