@@ -1,19 +1,22 @@
-import { useTonAddress } from '@tonconnect/ui-react';
 import React, { useState, useEffect } from 'react';
+import { useTonAddress } from '@tonconnect/ui-react';
 import { registerUser } from '../services/userService';
+import { claimTokens } from '../services/web3Service';
 
 const ProfilePage = () => {
     const [isCopied, setIsCopied] = useState(false);
-    const [selectedLanguage, setSelectedLanguage] = useState("English"); // Default language state
+    const [selectedLanguage, setSelectedLanguage] = useState("English");
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const walletAddress = useTonAddress();
     const [userInfos, setUserInfos] = useState({
         nickname: "Adventurer",
         walletAddress: walletAddress,
-        balance: "0.00"
+        balance: "0.00",
     });
+    const [isLoading, setIsLoading] = useState(false);
+    const [modalVisible, setModalVisible] = useState(false); // Modal visibility
+    const [modalMessage, setModalMessage] = useState(""); // Modal message
 
-    // Register or retrieve user when the component mounts
     useEffect(() => {
         const fetchUserInfo = async () => {
             if (walletAddress) {
@@ -33,30 +36,58 @@ const ProfilePage = () => {
         fetchUserInfo();
     }, [walletAddress]);
 
-    // Function to format wallet address
+    const handleClaim = async () => {
+        if (!walletAddress) return;
+
+        setIsLoading(true);
+        try {
+            const response = await claimTokens(walletAddress);
+            console.log("Claim Response", response);
+
+            if (response.success) {
+                // Re-fetch user info after successful claim
+                const userData = await registerUser(walletAddress);
+                if (userData.success) {
+                    setUserInfos({
+                        nickname: userData.user.nickname || "Adventurer",
+                        walletAddress: userData.user.wallet_address,
+                        balance: userData.user.balance || "0.00",
+                    });
+                }
+            } else {
+                // Show modal if the claim fails
+                setModalMessage(response.message || "Balance is not enough to claim tokens.");
+                setModalVisible(true);
+            }
+        } catch (error) {
+            console.error("Error during claim:", error);
+            setModalMessage("An error occurred while processing your request.");
+            setModalVisible(true);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const closeModal = () => {
+        setModalVisible(false);
+    };
+
     const formatAddress = (address) => {
         if (!address) return "";
         return `${address.slice(0, 4)}...${address.slice(-3)}`;
     };
 
-    // Function to handle copy to clipboard
     const handleCopy = () => {
         navigator.clipboard.writeText(userInfos.walletAddress);
         setIsCopied(true);
         setTimeout(() => {
             setIsCopied(false);
-        }, 3000); // Revert to copy icon after 3 seconds
+        }, 3000);
     };
 
-    const handleClaim = () => {
-        // Placeholder for claim functionality
-        console.log("Claim button clicked");
-    };
-
-    // Handle language change
     const handleLanguageChange = (language) => {
         setSelectedLanguage(language);
-        setIsDropdownOpen(false); // Close dropdown after selection
+        setIsDropdownOpen(false);
     };
 
     return (
@@ -67,13 +98,11 @@ const ProfilePage = () => {
                 </div>
             )}
             <div style={walletAddress ? styles.profileContainer : { ...styles.profileContainer, filter: 'blur(5px)', pointerEvents: 'none' }}>
-                {/* Avatar and Nickname */}
                 <div style={styles.avatarContainer}>
                     <img src="assets/mascot.png" alt="Avatar" style={styles.avatar} />
                     <h2 style={styles.nickname}>{userInfos.nickname}</h2>
                 </div>
 
-                {/* Wallet and Balance Section */}
                 <div style={styles.sectionContainer}>
                     <div style={styles.section}>
                         <h3 style={styles.sectionHeader}>Wallet</h3>
@@ -100,50 +129,40 @@ const ProfilePage = () => {
                                     Balance: <span style={styles.gradientText}>{userInfos.balance} $QST</span>
                                 </p>
                             </div>
-                            <button style={styles.claimButton} onClick={handleClaim}>Claim</button>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Settings and Language Section */}
-                <div style={styles.sectionContainer}>
-                    <div style={styles.section}>
-                        <h3 style={styles.sectionHeader}>Settings & Language</h3>
-                        <div style={styles.row}>
-                            <img src="assets/settings.svg" alt="Settings Icon" style={styles.rowIcon} />
-                            <p style={styles.settingsText}>Settings</p>
-                            <img src="assets/right-arrow.svg" alt="Right Arrow Icon" style={styles.rowIcon} />
-                        </div>
-                        <div style={styles.separator}></div>
-                        <div style={styles.row}>
-                            <img src="assets/language.svg" alt="Language Icon" style={styles.rowIcon} />
-                            <p style={styles.settingsText}>Language</p>
-                            <div style={styles.languageDropdownContainer}>
-                                <div 
-                                    onClick={() => setIsDropdownOpen(!isDropdownOpen)} 
-                                    style={styles.languageOption}
-                                >
-                                    <img
-                                        src={`assets/${selectedLanguage.toLowerCase()}.svg`}
-                                        alt={selectedLanguage}
-                                        style={styles.languageIcon}
-                                    />
-                                </div>
-                                {isDropdownOpen && (
-                                    <div style={styles.dropdownMenu}>
-                                        <div onClick={() => handleLanguageChange("English")} style={styles.languageOption}>
-                                            <img src="assets/english.svg" alt="English" style={styles.languageIcon} />
-                                        </div>
-                                        <div onClick={() => handleLanguageChange("Turkish")} style={styles.languageOption}>
-                                            <img src="assets/turkish.svg" alt="Turkish" style={styles.languageIcon} />
-                                        </div>
-                                    </div>
+                            <button
+                                style={{
+                                    ...styles.claimButton,
+                                    cursor: isLoading ? "not-allowed" : "pointer",
+                                    position: 'relative',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                }}
+                                onClick={handleClaim}
+                                disabled={isLoading}
+                            >
+                                {isLoading ? (
+                                    <div style={styles.spinner}></div>
+                                ) : (
+                                    "Claim"
                                 )}
-                            </div>
+                            </button>
                         </div>
                     </div>
                 </div>
             </div>
+
+            {/* Modal */}
+            {modalVisible && (
+                <div style={styles.modalOverlay}>
+                    <div style={styles.modal}>
+                        <p>{modalMessage}</p>
+                        <button style={styles.closeButton} onClick={closeModal}>
+                            Close
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
@@ -264,7 +283,7 @@ const styles = {
         marginLeft: 'auto',
     },
     claimButton: {
-        padding: '8px 16px',
+        padding: '8px 24px',
         fontSize: '14px',
         color: 'white',
         background: 'linear-gradient(135deg, #8a2be2, #c71585)',
@@ -306,6 +325,48 @@ const styles = {
         display: 'flex',
         flexDirection: 'column',
         gap: '5px',
+    },
+    spinner: {
+        width: '20px',
+        height: '20px',
+        border: '3px solid rgba(255, 255, 255, 0.3)',
+        borderTop: '3px solid #fff',
+        borderRadius: '50%',
+        animation: 'spin 1s linear infinite',
+    },
+    '@keyframes spin': {
+        from: { transform: 'rotate(0deg)' },
+        to: { transform: 'rotate(360deg)' },
+    },
+    modalOverlay: {
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0, 0, 0, 0.7)',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 1000,
+    },
+    modal: {
+        backgroundColor: '#fff',
+        padding: '20px',
+        borderRadius: '10px',
+        textAlign: 'center',
+        maxWidth: '400px',
+        width: '90%',
+        boxShadow: '0 4px 8px rgba(0, 0, 0, 0.3)',
+    },
+    closeButton: {
+        marginTop: '10px',
+        padding: '10px 20px',
+        backgroundColor: '#c71585',
+        color: 'white',
+        border: 'none',
+        borderRadius: '5px',
+        cursor: 'pointer',
     },
 };
 
