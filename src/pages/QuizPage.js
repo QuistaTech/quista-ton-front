@@ -2,34 +2,27 @@ import React, { useState, useEffect } from 'react';
 import Header from '../components/Header';
 import { useNavigate } from 'react-router-dom';
 import { feedQuestion, answerQuestion } from '../services/questionService';
+import { registerUser } from '../services/userService'; // Fetch user info for eraser count
 
 const QuizPage = () => {
     const [currentQuestion, setCurrentQuestion] = useState(null);
     const [timeLeft, setTimeLeft] = useState(0);
-    const [feedback, setFeedback] = useState({ visible: false, isCorrect: false, tokens: 0 });
-    const [loading, setLoading] = useState(true); // State for loading
+    const [feedback, setFeedback] = useState({ visible: false, isCorrect: false, tokens: 0, message: '', selectedOption: null });
+    const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-    const [journeyFinished, setJourneyFinished] = useState(false); // State for journey completion
+    const [journeyFinished, setJourneyFinished] = useState(false);
+    const [eraserCount, setEraserCount] = useState(0); // Initialize eraser count from backend
     const navigate = useNavigate();
 
     // Get wallet address from local storage
     const walletAddress = localStorage.getItem('walletAddress');
-
-    // Fetch the first question when the component mounts and walletAddress is available
-    useEffect(() => {
-        if (walletAddress) {
-            fetchQuestion();
-        } else {
-            setError('Wallet address not found. Please connect your wallet.');
-        }
-    }, []);
 
     const fetchQuestion = async () => {
         if (!walletAddress) {
             setError('Wallet address not available.');
             return;
         }
-        setLoading(true); // Show loading indicator
+        setLoading(true);
 
         try {
             const response = await feedQuestion(walletAddress);
@@ -44,9 +37,32 @@ const QuizPage = () => {
         } catch (err) {
             setError('An unexpected error occurred.');
         } finally {
-            setLoading(false); // Hide loading indicator after fetching
+            setLoading(false);
         }
     };
+
+    // Fetch user info and initial question when component mounts
+    useEffect(() => {
+        const fetchUserInfo = async () => {
+            if (walletAddress) {
+                try {
+                    const response = await registerUser(walletAddress);
+                    if (response.success) {
+                        setEraserCount(response.user.eraser); // Set eraser count from backend
+                    } else {
+                        console.error('Error fetching user info:', response.message);
+                    }
+                } catch (error) {
+                    console.error('Error fetching user info:', error);
+                }
+            } else {
+                setError('Wallet address not found. Please connect your wallet.');
+            }
+        };
+
+        fetchUserInfo();
+        fetchQuestion();
+    }, [walletAddress]);
 
     useEffect(() => {
         if (feedback.visible || !currentQuestion) return;
@@ -63,13 +79,13 @@ const QuizPage = () => {
     }, [timeLeft, feedback.visible, currentQuestion]);
 
     const handleNextQuestion = () => {
-        setFeedback({ visible: false, isCorrect: false, tokens: 0 });
-        setCurrentQuestion(null); // Clear current question before fetching the next
-        fetchQuestion(); // Fetch a new question
+        setFeedback({ visible: false, isCorrect: false, tokens: 0, message: '', selectedOption: null });
+        setCurrentQuestion(null);
+        fetchQuestion();
     };
 
     const handleFinishJourney = () => {
-        setJourneyFinished(true); // Set journey finished state
+        setJourneyFinished(true);
     };
 
     const handleOptionClick = async (option) => {
@@ -77,14 +93,47 @@ const QuizPage = () => {
 
         try {
             const response = await answerQuestion(walletAddress, currentQuestion.question_id, option);
-            setFeedback({
-                visible: true,
-                isCorrect: response.success && response.isCorrectAnswer,
-                tokens: response.tokensAdded || 0,
-            });
+
+            if (response.success && response.isCorrectAnswer) {
+                setFeedback({
+                    visible: true,
+                    isCorrect: true,
+                    tokens: response.tokensAdded || 0,
+                    message: 'Correct!',
+                    selectedOption: option
+                });
+            } else {
+                setFeedback({
+                    visible: true,
+                    isCorrect: false,
+                    tokens: 0,
+                    message: 'Incorrect answer. Please choose an option:',
+                    showOptionsPrompt: true,
+                    selectedOption: option
+                });
+            }
         } catch (err) {
-            setFeedback({ visible: true, isCorrect: false, tokens: 0 });
+            setFeedback({ visible: true, isCorrect: false, tokens: 0, message: 'An error occurred.', selectedOption: option });
         }
+    };
+
+    const useEraser = () => {
+        if (!currentQuestion) return;
+
+        setEraserCount(prev => prev - 1);
+
+        const updatedOptions = currentQuestion.options.filter(opt => opt !== feedback.selectedOption);
+        setCurrentQuestion({ ...currentQuestion, options: updatedOptions });
+
+        setFeedback({ visible: false, isCorrect: false, tokens: 0, message: '', showOptionsPrompt: false, selectedOption: null });
+    };
+
+    const goToNextQuestion = () => {
+        handleNextQuestion();
+    };
+
+    const endExam = () => {
+        navigate('/'); // Redirect to home or end page
     };
 
     const mapDifficultyToLevel = (difficulty) => {
@@ -150,12 +199,13 @@ const QuizPage = () => {
                 ) : (
                     <div style={styles.quizContent}>
                         <h2 style={{ ...styles.quizTitle, background: gradient }}>{currentQuestion.level.toUpperCase()}</h2>
-                        <div style={{ ...styles.questionContainer, filter: feedback.visible ? 'blur(3px)' : 'none' }}>
+                        <p>Erasers remaining: {eraserCount}</p>
+                        <div style={{ ...styles.questionContainer, filter: feedback.visible && !feedback.showOptionsPrompt ? 'blur(3px)' : 'none' }}>
                             <p style={styles.questionText}>{currentQuestion.question_text}</p>
                         </div>
                         <div style={styles.optionsContainer}>
                             {currentQuestion.options.map((option, index) => (
-                                <button key={index} style={styles.optionButton} onClick={() => handleOptionClick(option)} disabled={feedback.visible}>
+                                <button key={index} style={styles.optionButton} onClick={() => handleOptionClick(option)} disabled={feedback.visible && !feedback.showOptionsPrompt}>
                                     {option}
                                 </button>
                             ))}
@@ -176,16 +226,26 @@ const QuizPage = () => {
                                             <span style={styles.tokenDisplay}>+{feedback.tokens} $QST</span>
                                         )}
                                     </div>
-                                    <div style={styles.feedbackButtonContainer}>
-                                        {currentQuestion.level === "legendary" ? (
-                                            <button style={styles.finishButton} onClick={handleFinishJourney}>Finish the Journey</button>
-                                        ) : (
-                                            <>
-                                                <button style={styles.breakButton} onClick={() => navigate("/")}>Take a Break</button>
-                                                <button style={styles.nextButton} onClick={handleNextQuestion}>Next Question</button>
-                                            </>
-                                        )}
-                                    </div>
+                                    {feedback.showOptionsPrompt ? (
+                                        <div style={styles.feedbackButtonContainer}>
+                                            {eraserCount > 0 && (
+                                                <button style={styles.useEraserButton} onClick={useEraser}>Use Eraser</button>
+                                            )}
+                                            <button style={styles.nextButton} onClick={goToNextQuestion}>Go to Next Question</button>
+                                            <button style={styles.endExamButton} onClick={endExam}>End Exam</button>
+                                        </div>
+                                    ) : (
+                                        <div style={styles.feedbackButtonContainer}>
+                                            {currentQuestion.level === "legendary" ? (
+                                                <button style={styles.finishButton} onClick={handleFinishJourney}>Finish the Journey</button>
+                                            ) : (
+                                                <>
+                                                    <button style={styles.breakButton} onClick={() => navigate("/")}>Take a Break</button>
+                                                    <button style={styles.nextButton} onClick={handleNextQuestion}>Next Question</button>
+                                                </>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         )}
@@ -205,7 +265,212 @@ const QuizPage = () => {
     );
 };
 
+export default QuizPage;
+
 const styles = {
+    // Additional styles for buttons
+    useEraserButton: {
+        padding: '10px 20px',
+        fontSize: '16px',
+        color: 'white',
+        background: 'green',
+        border: 'none',
+        borderRadius: '8px',
+        cursor: 'pointer',
+        margin: '5px',
+    },
+    nextButton: {
+        padding: '10px 20px',
+        fontSize: '16px',
+        color: 'white',
+        background: 'blue',
+        border: 'none',
+        borderRadius: '8px',
+        cursor: 'pointer',
+        margin: '5px',
+    },
+    endExamButton: {
+        padding: '10px 20px',
+        fontSize: '16px',
+        color: 'white',
+        background: 'red',
+        border: 'none',
+        borderRadius: '8px',
+        cursor: 'pointer',
+        margin: '5px',
+    },
+    useEraserButton: {
+        padding: '10px 20px',
+        fontSize: '16px',
+        color: 'white',
+        background: 'green',
+        border: 'none',
+        borderRadius: '8px',
+        cursor: 'pointer',
+        margin: '5px',
+    },
+    nextButton: {
+        padding: '10px 20px',
+        fontSize: '16px',
+        color: 'white',
+        background: 'blue',
+        border: 'none',
+        borderRadius: '8px',
+        cursor: 'pointer',
+        margin: '5px',
+    },
+    endExamButton: {
+        padding: '10px 20px',
+        fontSize: '16px',
+        color: 'white',
+        background: 'red',
+        border: 'none',
+        borderRadius: '8px',
+        cursor: 'pointer',
+        margin: '5px',
+    },
+    useEraserButton: {
+        padding: '10px 20px',
+        fontSize: '16px',
+        color: 'white',
+        background: 'green',
+        border: 'none',
+        borderRadius: '8px',
+        cursor: 'pointer',
+        margin: '5px',
+    },
+    nextButton: {
+        padding: '10px 20px',
+        fontSize: '16px',
+        color: 'white',
+        background: 'blue',
+        border: 'none',
+        borderRadius: '8px',
+        cursor: 'pointer',
+        margin: '5px',
+    },
+    endExamButton: {
+        padding: '10px 20px',
+        fontSize: '16px',
+        color: 'white',
+        background: 'red',
+        border: 'none',
+        borderRadius: '8px',
+        cursor: 'pointer',
+        margin: '5px',
+    },
+    useEraserButton: {
+        padding: '10px 20px',
+        fontSize: '16px',
+        color: 'white',
+        background: 'green',
+        border: 'none',
+        borderRadius: '8px',
+        cursor: 'pointer',
+        margin: '5px',
+    },
+    nextButton: {
+        padding: '10px 20px',
+        fontSize: '16px',
+        color: 'white',
+        background: 'blue',
+        border: 'none',
+        borderRadius: '8px',
+        cursor: 'pointer',
+        margin: '5px',
+    },
+    endExamButton: {
+        padding: '10px 20px',
+        fontSize: '16px',
+        color: 'white',
+        background: 'red',
+        border: 'none',
+        borderRadius: '8px',
+        cursor: 'pointer',
+        margin: '5px',
+    },
+    useEraserButton: {
+        padding: '10px 20px',
+        fontSize: '16px',
+        color: 'white',
+        background: 'green',
+        border: 'none',
+        borderRadius: '8px',
+        cursor: 'pointer',
+        margin: '5px',
+    },
+    nextButton: {
+        padding: '10px 20px',
+        fontSize: '16px',
+        color: 'white',
+        background: 'blue',
+        border: 'none',
+        borderRadius: '8px',
+        cursor: 'pointer',
+        margin: '5px',
+    },
+    endExamButton: {
+        padding: '10px 20px',
+        fontSize: '16px',
+        color: 'white',
+        background: 'red',
+        border: 'none',
+        borderRadius: '8px',
+        cursor: 'pointer',
+        margin: '5px',
+    },
+    useEraserButton: {
+        padding: '10px 20px',
+        fontSize: '16px',
+        color: 'white',
+        background: 'green',
+        border: 'none',
+        borderRadius: '8px',
+        cursor: 'pointer',
+        margin: '5px',
+    },
+    nextButton: {
+        padding: '10px 20px',
+        fontSize: '16px',
+        color: 'white',
+        background: 'blue',
+        border: 'none',
+        borderRadius: '8px',
+        cursor: 'pointer',
+        margin: '5px',
+    },
+    endExamButton: {
+        padding: '10px 20px',
+        fontSize: '16px',
+        color: 'white',
+        background: 'red',
+        border: 'none',
+        borderRadius: '8px',
+        cursor: 'pointer',
+        margin: '5px',
+    },
+    // Additional styles for buttons
+    useEraserButton: {
+        padding: '10px 20px',
+        fontSize: '16px',
+        color: 'white',
+        background: 'green',
+        border: 'none',
+        borderRadius: '8px',
+        cursor: 'pointer',
+        margin: '5px',
+    },
+    cancelButton: {
+        padding: '10px 20px',
+        fontSize: '16px',
+        color: 'white',
+        background: 'red',
+        border: 'none',
+        borderRadius: '8px',
+        cursor: 'pointer',
+        margin: '5px',
+    },
+
     quizContainer: {
         display: 'flex',
         flexDirection: 'column',
@@ -444,5 +709,3 @@ const styles = {
         color: "#fff"
     },
 };
-
-export default QuizPage;
