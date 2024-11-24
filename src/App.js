@@ -5,13 +5,14 @@ import HomePage from './pages/HomePage';
 import MarketplacePage from './pages/MarketplacePage';
 import ProfilePage from './pages/ProfilePage';
 import BottomTabNavigator from './components/BottomTabNavigator';
-import { TonConnectUIProvider } from '@tonconnect/ui-react';
+import { TonConnectUIProvider, useTonWallet } from '@tonconnect/ui-react';
 import QuizPage from './pages/QuizPage';
 import SplashScreen from './components/SplashScreen'; // Import the splash screen
 
+
 const AppContent = () => {
   const location = useLocation();
-
+  const wallet = useTonWallet()
   return (
     <div>
       <Routes>
