@@ -1,6 +1,6 @@
-// userService.js
 
-const BASE_URL = 'http://127.0.0.1:5000'; // Replace with your backend URL if needed
+import { BASE_URL } from '../utils/constants';
+
 
 // Function to register or get a user by wallet address
 export const claimTokens = async (walletAddress) => {

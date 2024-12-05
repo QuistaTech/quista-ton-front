@@ -232,7 +232,7 @@ const QuizPage = () => {
                                                 <button style={styles.useEraserButton} onClick={useEraser}>Use Eraser</button>
                                             )}
                                             <button style={styles.nextButton} onClick={goToNextQuestion}>Go to Next Question</button>
-                                            <button style={styles.endExamButton} onClick={endExam}>End Exam</button>
+                                            <button style={styles.endExamButton} onClick={endExam}>End Journey</button>
                                         </div>
                                     ) : (
                                         <div style={styles.feedbackButtonContainer}>
