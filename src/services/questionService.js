@@ -1,6 +1,5 @@
-// questionService.js
 
-const BASE_URL = 'http://127.0.0.1:5000'; // Replace with your backend URL if different
+import { BASE_URL } from '../utils/constants';
 
 // Function to fetch a question for a specific wallet address using the feed_question endpoint
 export const feedQuestion = async (walletAddress) => {
