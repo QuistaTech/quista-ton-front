@@ -8,6 +8,7 @@ import BottomTabNavigator from './components/BottomTabNavigator';
 import { TonConnectUIProvider, useTonWallet } from '@tonconnect/ui-react';
 import QuizPage from './pages/QuizPage';
 import SplashScreen from './components/SplashScreen'; // Import the splash screen
+import TestingQuizPage from './pages/TestingQuizPage';
 
 
 const AppContent = () => {
@@ -20,6 +21,8 @@ const AppContent = () => {
         <Route path="/marketplace" element={<MarketplacePage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/quiz" element={<QuizPage />} />
+        <Route path="/quiz-test" element={<TestingQuizPage />} />
+
       </Routes>
       {location.pathname !== '/quiz' && <BottomTabNavigator />}
     </div>

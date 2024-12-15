@@ -13,3 +13,9 @@ html, body, #root {
     transform: rotate(360deg);
   }
 }
+
+.lightbox-wrapper .ril-image-current {
+  background-color: white; /* Set the white background for the lightbox image */
+  border-radius: 8px; /* Optional: Rounded corners */
+  z-index: 1050 !important;
+}

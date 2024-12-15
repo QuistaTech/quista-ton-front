@@ -49,7 +49,7 @@ const styles = {
       0 10px 10px -5px rgba(138, 43, 226, 0.6),  /* First shadow layer (purple) */
       0 15px 15px -5px rgba(199, 21, 133, 0.5) /* Second shadow layer (magenta) */
     `,
-    zIndex: '99999',
+    zIndex: '500',
   },
   logo: {
     width: '25%', // Adjust logo size as needed
